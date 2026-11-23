@@ -20,7 +20,7 @@ def extraer_fragmentos(pdf: bytes) ->list[dict]:
                 
             })
 
-        if not fragmentos:
-            raise ValueError("El pdf no contiene texto seleccionable")
+    if not fragmentos:
+        raise ValueError("El PDF no contiene texto seleccionable.")
 
     return fragmentos
