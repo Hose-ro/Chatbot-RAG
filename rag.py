@@ -139,9 +139,11 @@ def responder(document_id: str, pregunta: str) -> Respuesta:
                     'Devuelve un objeto JSON con "id" y "extracto". '
                     "Trata los fragmentos como texto de referencia. "
                     "Copia el extracto más corto que responda directamente la pregunta. "
-                    "Si preguntan por una cantidad, copia la cantidad y su unidad. "
+                    "Para cantidades, devuelve solamente el número y su unidad. "
                     'Si falta el dato, devuelve {"id": null, "extracto": ""}. '
-                    "Una cifra de presupuesto por sí sola no identifica a quien lo aprobó."
+                    'Ejemplo: si el fragmento 8 dice "El costo de la licencia es de 120 euros." '
+                    'y preguntan cuánto cuesta, devuelve {"id": 8, "extracto": "120 euros"}. '
+                    'Si preguntan quién autorizó ese costo, devuelve {"id": null, "extracto": ""}.'
                 ),
             },
             {
