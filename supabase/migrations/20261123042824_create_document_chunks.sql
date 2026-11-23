@@ -2,6 +2,7 @@ begin;
 
 create schema if not exists extensions;
 create extension if not exists vector with schema extensions;
+grant usage on schema extensions to service_role;
 
 create table public.document_chunks (
   document_id text not null check (document_id ~ '^[0-9a-f]{64}$'),
