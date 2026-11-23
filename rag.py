@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 
 from dotenv import dotenv_values
 from openai import OpenAI
@@ -7,6 +8,18 @@ from supabase import create_client
 SIN_EVIDENCIA = "No hay evidencia en el PDF para responder esa pregunta."
 
 ollama = OpenAI(base_url="http://127.0.0.1:11434/v1", api_key="ollama")
+
+
+@dataclass(frozen=True)
+class Fuente:
+    pagina: int
+    contenido: str
+
+
+@dataclass(frozen=True)
+class Respuesta:
+    texto: str
+    fuente: Fuente | None = None
 
 
 def conectar_supabase():
@@ -46,7 +59,7 @@ def indexar(fragmentos: list[dict]) -> None:
         ).execute()
 
 
-def responder(document_id: str, pregunta: str) -> str:
+def responder(document_id: str, pregunta: str) -> Respuesta:
     db = conectar_supabase()
     consulta = (
         "Instruct: Recupera pasajes que respondan directamente la pregunta.\n"
@@ -60,7 +73,7 @@ def responder(document_id: str, pregunta: str) -> str:
     }).execute().data
 
     if not fragmentos:
-        return SIN_EVIDENCIA
+        return Respuesta(SIN_EVIDENCIA)
 
     contexto = [
         {"id": fila["chunk_index"], "texto": fila["content"]}
@@ -95,18 +108,19 @@ def responder(document_id: str, pregunta: str) -> str:
     try:
         eleccion = json.loads(resultado.choices[0].message.content or "")
     except json.JSONDecodeError:
-        return SIN_EVIDENCIA
+        return Respuesta(SIN_EVIDENCIA)
 
     if not isinstance(eleccion, dict):
-        return SIN_EVIDENCIA
+        return Respuesta(SIN_EVIDENCIA)
 
     extracto = eleccion.get("extracto")
     if not isinstance(extracto, str) or not extracto.strip():
-        return SIN_EVIDENCIA
+        return Respuesta(SIN_EVIDENCIA)
 
     extracto = extracto.strip()
     for fila in fragmentos:
         if fila["chunk_index"] == eleccion.get("id") and extracto in fila["content"]:
-            return f'{extracto} [p. {fila["page_number"]}]'
+            fuente = Fuente(fila["page_number"], fila["content"])
+            return Respuesta(f"{extracto} [p. {fuente.pagina}]", fuente)
 
-    return SIN_EVIDENCIA
+    return Respuesta(SIN_EVIDENCIA)

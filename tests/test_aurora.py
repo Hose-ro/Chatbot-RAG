@@ -75,14 +75,15 @@ class PruebasAurora(unittest.TestCase):
             self.aurora, "¿Cuál es el presupuesto de Aurora?",
             '{"id": 0, "extracto": "47 pesos"}',
         )
-        self.assertEqual(resultado, "47 pesos [p. 1]")
+        self.assertEqual(resultado.texto, "47 pesos [p. 1]")
+        self.assertEqual(resultado.fuente, rag.Fuente(1, self.aurora["content"]))
 
     def test_aprobador_sin_evidencia(self):
         resultado = self.consultar(
             self.aurora, "¿Quién aprobó el presupuesto?",
             '{"id": null, "extracto": ""}',
         )
-        self.assertEqual(resultado, rag.SIN_EVIDENCIA)
+        self.assertEqual(resultado, rag.Respuesta(rag.SIN_EVIDENCIA))
 
     def test_portada_vacia_conserva_la_pagina(self):
         fragmentos = extraer_fragmentos(crear_pdf("", "Presupuesto: 47 pesos."))
@@ -98,9 +99,10 @@ class PruebasAurora(unittest.TestCase):
             self.otro_pdf, "¿Cuál es el presupuesto de Aurora?",
             '{"id": 0, "extracto": "99 pesos"}',
         )
-        self.assertEqual(resultado, "99 pesos [p. 1]")
+        self.assertEqual(resultado.texto, "99 pesos [p. 1]")
+        self.assertEqual(resultado.fuente, rag.Fuente(1, self.otro_pdf["content"]))
         resultado = self.consultar(
             self.otro_pdf, "¿Cuál es el presupuesto de Aurora?",
             '{"id": 0, "extracto": "47 pesos"}',
         )
-        self.assertEqual(resultado, rag.SIN_EVIDENCIA)
+        self.assertEqual(resultado, rag.Respuesta(rag.SIN_EVIDENCIA))

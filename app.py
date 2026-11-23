@@ -3,7 +3,15 @@ from hashlib import sha256
 import streamlit as st
 
 from documentos import extraer_fragmentos
-from rag import indexar, responder
+from rag import Respuesta, indexar, responder
+
+
+def mostrar_respuesta(respuesta: Respuesta) -> None:
+    with st.chat_message("assistant"):
+        st.text(respuesta.texto)
+        if respuesta.fuente:
+            with st.expander(f"Ver fuente · p. {respuesta.fuente.pagina}"):
+                st.text(respuesta.fuente.contenido)
 
 st.title("Chatbot RAG")
 archivo = st.file_uploader("Sube un PDF con texto seleccionable", type="pdf")
@@ -32,7 +40,10 @@ if st.session_state.get("document_id") != document_id:
     st.session_state.mensajes = []
 
 for rol, contenido in st.session_state.mensajes:
-    st.chat_message(rol).text(contenido)
+    if rol == "assistant":
+        mostrar_respuesta(contenido)
+    else:
+        st.chat_message(rol).text(contenido)
 
 pregunta = st.chat_input("Pregunta sobre el PDF activo")
 if pregunta and pregunta.strip():
@@ -46,7 +57,7 @@ if pregunta and pregunta.strip():
         st.error("No se pudo consultar el PDF. Revisa Ollama y Supabase.")
         st.stop()
 
-    st.chat_message("assistant").text(respuesta)
+    mostrar_respuesta(respuesta)
     st.session_state.mensajes.extend([
         ("user", pregunta),
         ("assistant", respuesta),
