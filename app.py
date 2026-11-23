@@ -41,6 +41,7 @@ if st.session_state.get("document_id") != document_id:
 indice = st.session_state.indice
 estado = "Índice reutilizado" if indice.reutilizado else "PDF indexado"
 st.caption(f"{estado} · {indice.cantidad} fragmentos")
+modo_busqueda = st.radio("Búsqueda", ("Semántica", "Híbrida"), horizontal=True)
 
 for rol, contenido in st.session_state.mensajes:
     if rol == "assistant":
@@ -55,7 +56,7 @@ if pregunta and pregunta.strip():
 
     try:
         with st.spinner("Buscando en el PDF…"):
-            respuesta = responder(document_id, pregunta)
+            respuesta = responder(document_id, pregunta, busqueda_hibrida=modo_busqueda == "Híbrida")
     except RespuestaModeloInvalida:
         st.error("Ollama devolvió una respuesta que no se pudo verificar. Intenta de nuevo.")
         st.stop()

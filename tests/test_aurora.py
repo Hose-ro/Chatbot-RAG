@@ -43,7 +43,7 @@ class PruebasAurora(unittest.TestCase):
             crear_pdf("El presupuesto del proyecto Aurora es de 99 pesos.")
         )[0]
 
-    def consultar(self, fragmento, pregunta, salida_modelo):
+    def consultar(self, fragmento, pregunta, salida_modelo, *, hibrida=False):
         documentos = {
             fila["document_id"]: fila for fila in (self.aurora, self.otro_pdf)
         }
@@ -62,12 +62,18 @@ class PruebasAurora(unittest.TestCase):
                     data=[documentos[args["target_document_id"]]]
                 ),
             )
-            resultado = rag.responder(fragmento["document_id"], pregunta)
+            resultado = rag.responder(
+                fragmento["document_id"], pregunta, busqueda_hibrida=hibrida,
+            )
             rpc.assert_called_once()
             nombre, args = rpc.call_args.args
-            self.assertEqual(nombre, "match_document_chunks")
+            self.assertEqual(
+                nombre, "match_document_chunks_hybrid" if hibrida else "match_document_chunks",
+            )
             self.assertEqual(args["target_document_id"], fragmento["document_id"])
             self.assertEqual(args["match_count"], 5)
+            if hibrida:
+                self.assertEqual(args["query_text"], pregunta)
             return resultado
 
     def test_presupuesto_con_cita(self):
@@ -111,6 +117,13 @@ class PruebasAurora(unittest.TestCase):
         for salida in ("texto no JSON", "{}", '{"id": true, "extracto": "47 pesos"}'):
             with self.subTest(salida=salida), self.assertRaises(rag.RespuestaModeloInvalida):
                 self.consultar(self.aurora, "¿Cuál es el presupuesto?", salida)
+
+    def test_busqueda_hibrida_envia_texto_y_conserva_pdf_activo(self):
+        resultado = self.consultar(
+            self.aurora, "presupuesto Aurora", '{"id": 0, "extracto": "47 pesos"}',
+            hibrida=True,
+        )
+        self.assertEqual(resultado.texto, "47 pesos [p. 1]")
 
 
 class PruebasIndice(unittest.TestCase):

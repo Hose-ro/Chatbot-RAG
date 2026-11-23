@@ -108,18 +108,23 @@ def preparar_pdf(pdf: bytes) -> IndicePreparado:
     return IndicePreparado(len(fragmentos), reutilizado=False)
 
 
-def responder(document_id: str, pregunta: str) -> Respuesta:
+def responder(document_id: str, pregunta: str, *, busqueda_hibrida: bool = False) -> Respuesta:
     db = conectar_supabase()
     consulta = (
         "Instruct: Recupera pasajes que respondan directamente la pregunta.\n"
         f"Query: {pregunta}"
     )
     vector = generar_embeddings([consulta])[0]
-    fragmentos = db.rpc("match_document_chunks", {
+    rpc = "match_document_chunks"
+    parametros = {
         "target_document_id": document_id,
         "query_embedding": json.dumps(vector),
         "match_count": 5,
-    }).execute().data
+    }
+    if busqueda_hibrida:
+        rpc = "match_document_chunks_hybrid"
+        parametros["query_text"] = pregunta
+    fragmentos = db.rpc(rpc, parametros).execute().data
 
     if not fragmentos:
         return Respuesta(SIN_EVIDENCIA)
