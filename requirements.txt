@@ -1,0 +1,6 @@
+streamlit
+pypdf
+langchain-text-splitters
+openai
+supabase
+python-dotenv
