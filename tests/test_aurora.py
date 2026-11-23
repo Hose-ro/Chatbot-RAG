@@ -1,7 +1,7 @@
 import unittest
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -111,3 +111,43 @@ class PruebasAurora(unittest.TestCase):
         for salida in ("texto no JSON", "{}", '{"id": true, "extracto": "47 pesos"}'):
             with self.subTest(salida=salida), self.assertRaises(rag.RespuestaModeloInvalida):
                 self.consultar(self.aurora, "¿Cuál es el presupuesto?", salida)
+
+
+class PruebasIndice(unittest.TestCase):
+    def setUp(self):
+        self.pdf = crear_pdf("Presupuesto: 47 pesos.")
+        self.document_id = rag.id_indice(self.pdf)
+        conectar = patch("rag.conectar_supabase")
+        generar = patch("rag.generar_embeddings", return_value=[[1.0] * 1024])
+        self.conectar = conectar.start()
+        self.addCleanup(conectar.stop)
+        self.embeddings = generar.start()
+        self.addCleanup(generar.stop)
+        tabla = self.conectar.return_value.table
+        self.indices = tabla.return_value
+        self.fragmentos = Mock()
+        tablas = {"document_indexes": self.indices, "document_chunks": self.fragmentos}
+        tabla.side_effect = tablas.__getitem__
+        self.indices.select.return_value.eq.return_value.execute.return_value.data = []
+
+    def test_indice_existente_no_recalcula_vectores(self):
+        self.indices.select.return_value.eq.return_value.execute.return_value.data = [
+            {"chunk_count": 1},
+        ]
+        self.assertEqual(rag.preparar_pdf(self.pdf), rag.IndicePreparado(1, True))
+        self.embeddings.assert_not_called()
+        self.fragmentos.upsert.assert_not_called()
+
+    def test_retry_registra_indice_solo_cuando_termina_la_escritura(self):
+        escribir = self.fragmentos.upsert.return_value.execute
+        escribir.side_effect = [RuntimeError("falló el lote"), None]
+        with self.assertRaises(RuntimeError):
+            rag.preparar_pdf(self.pdf)
+        self.indices.upsert.assert_not_called()
+
+        self.assertEqual(rag.preparar_pdf(self.pdf), rag.IndicePreparado(1, False))
+        agregado = self.indices.upsert.call_args.args[0]
+        self.assertEqual(agregado["document_id"], self.document_id)
+        self.assertEqual(agregado["embedding_model"], rag.MODELO_EMBEDDING)
+        self.assertEqual(agregado["chunk_count"], 1)
+        self.assertTrue(self.fragmentos.upsert.call_args.kwargs["ignore_duplicates"])

@@ -1,11 +1,7 @@
-from hashlib import sha256
-
 import streamlit as st
-
-from documentos import extraer_fragmentos
 from openai import APIError
 
-from rag import Respuesta, RespuestaModeloInvalida, indexar, responder
+from rag import Respuesta, RespuestaModeloInvalida, id_indice, preparar_pdf, responder
 
 
 def mostrar_respuesta(respuesta: Respuesta) -> None:
@@ -22,24 +18,29 @@ if archivo is None:
     st.stop()
 
 pdf = archivo.getvalue()
-document_id = sha256(pdf).hexdigest()
+document_id = id_indice(pdf)
 
 if st.session_state.get("document_id") != document_id:
-    if not st.button("Indexar PDF"):
+    if not st.button("Preparar PDF"):
         st.stop()
 
     try:
-        with st.spinner("Indexando el PDF…"):
-            indexar(extraer_fragmentos(pdf))
+        with st.spinner("Preparando el índice del PDF…"):
+            indice = preparar_pdf(pdf)
     except ValueError as error:
         st.error(str(error))
         st.stop()
     except Exception:
-        st.error("No se pudo indexar el PDF. Revisa el archivo, Ollama y Supabase.")
+        st.error("No se pudo preparar el PDF. Revisa el archivo, Ollama y Supabase y reintenta.")
         st.stop()
 
     st.session_state.document_id = document_id
     st.session_state.mensajes = []
+    st.session_state.indice = indice
+
+indice = st.session_state.indice
+estado = "Índice reutilizado" if indice.reutilizado else "PDF indexado"
+st.caption(f"{estado} · {indice.cantidad} fragmentos")
 
 for rol, contenido in st.session_state.mensajes:
     if rol == "assistant":

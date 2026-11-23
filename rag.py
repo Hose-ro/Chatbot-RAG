@@ -1,11 +1,17 @@
 import json
 from dataclasses import dataclass
+from hashlib import sha256
 
 from dotenv import dotenv_values
 from openai import OpenAI
 from supabase import create_client
 
+from documentos import extraer_fragmentos
+
 SIN_EVIDENCIA = "No hay evidencia en el PDF para responder esa pregunta."
+MODELO_EMBEDDING = "qwen3-embedding:0.6b"
+DIMENSIONES = 1024
+VERSION_INDICE = 1
 
 ollama = OpenAI(base_url="http://127.0.0.1:11434/v1", api_key="ollama")
 
@@ -20,6 +26,12 @@ class Fuente:
 class Respuesta:
     texto: str
     fuente: Fuente | None = None
+
+
+@dataclass(frozen=True)
+class IndicePreparado:
+    cantidad: int
+    reutilizado: bool
 
 
 class RespuestaModeloInvalida(RuntimeError):
@@ -37,30 +49,63 @@ def conectar_supabase():
 
 def generar_embeddings(textos: list[str]) -> list[list[float]]:
     resultado = ollama.embeddings.create(
-        model="qwen3-embedding:0.6b",
+        model=MODELO_EMBEDDING,
         input=textos,
-        dimensions=1024,
+        dimensions=DIMENSIONES,
         encoding_format="float",
     )
     vectores = [item.embedding for item in sorted(resultado.data, key=lambda item: item.index)]
-    if len(vectores) != len(textos) or any(len(vector) != 1024 for vector in vectores):
+    if len(vectores) != len(textos) or any(len(vector) != DIMENSIONES for vector in vectores):
         raise ValueError("Ollama devolvió embeddings con una forma inesperada.")
     return vectores
 
 
-def indexar(fragmentos: list[dict]) -> None:
+def id_indice(pdf: bytes) -> str:
+    # Incrementa VERSION_INDICE cuando cambie la extracción o división del texto.
+    identidad = f"{MODELO_EMBEDDING}:{DIMENSIONES}:{VERSION_INDICE}:".encode()
+    indice = sha256(identidad)
+    indice.update(pdf)
+    return indice.hexdigest()
+
+
+def preparar_pdf(pdf: bytes) -> IndicePreparado:
+    document_id = id_indice(pdf)
     db = conectar_supabase()
+    existentes = (
+        db.table("document_indexes")
+        .select("chunk_count")
+        .eq("document_id", document_id)
+        .execute()
+        .data
+    )
+    if existentes:
+        return IndicePreparado(existentes[0]["chunk_count"], reutilizado=True)
+
+    fragmentos = extraer_fragmentos(pdf)
     for inicio in range(0, len(fragmentos), 32):
         lote = fragmentos[inicio:inicio + 32]
         vectores = generar_embeddings([fragmento["content"] for fragmento in lote])
         filas = [
-            {**fragmento, "embedding": json.dumps(vector)}
+            {**fragmento, "document_id": document_id, "embedding": json.dumps(vector)}
             for fragmento, vector in zip(lote, vectores, strict=True)
         ]
         db.table("document_chunks").upsert(
             filas,
             on_conflict="document_id,chunk_index",
+            ignore_duplicates=True,
         ).execute()
+
+    db.table("document_indexes").upsert(
+        {
+            "document_id": document_id,
+            "embedding_model": MODELO_EMBEDDING,
+            "pipeline_version": VERSION_INDICE,
+            "chunk_count": len(fragmentos),
+        },
+        on_conflict="document_id",
+        ignore_duplicates=True,
+    ).execute()
+    return IndicePreparado(len(fragmentos), reutilizado=False)
 
 
 def responder(document_id: str, pregunta: str) -> Respuesta:
