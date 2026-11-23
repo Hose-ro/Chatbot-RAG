@@ -3,7 +3,9 @@ from hashlib import sha256
 import streamlit as st
 
 from documentos import extraer_fragmentos
-from rag import Respuesta, indexar, responder
+from openai import APIError
+
+from rag import Respuesta, RespuestaModeloInvalida, indexar, responder
 
 
 def mostrar_respuesta(respuesta: Respuesta) -> None:
@@ -53,6 +55,12 @@ if pregunta and pregunta.strip():
     try:
         with st.spinner("Buscando en el PDF…"):
             respuesta = responder(document_id, pregunta)
+    except RespuestaModeloInvalida:
+        st.error("Ollama devolvió una respuesta que no se pudo verificar. Intenta de nuevo.")
+        st.stop()
+    except APIError:
+        st.error("No se pudo completar la consulta en Ollama. Revisa que esté en ejecución.")
+        st.stop()
     except Exception:
         st.error("No se pudo consultar el PDF. Revisa Ollama y Supabase.")
         st.stop()

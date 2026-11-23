@@ -22,6 +22,10 @@ class Respuesta:
     fuente: Fuente | None = None
 
 
+class RespuestaModeloInvalida(RuntimeError):
+    """Ollama devolvió una respuesta que no se pudo verificar."""
+
+
 def conectar_supabase():
     config = dotenv_values(".env")
     url = config.get("SUPABASE_URL")
@@ -105,22 +109,28 @@ def responder(document_id: str, pregunta: str) -> Respuesta:
         ],
     )
 
+    if not resultado.choices:
+        raise RespuestaModeloInvalida()
+
     try:
         eleccion = json.loads(resultado.choices[0].message.content or "")
-    except json.JSONDecodeError:
-        return Respuesta(SIN_EVIDENCIA)
+    except json.JSONDecodeError as error:
+        raise RespuestaModeloInvalida() from error
 
-    if not isinstance(eleccion, dict):
-        return Respuesta(SIN_EVIDENCIA)
+    if not isinstance(eleccion, dict) or not {"id", "extracto"} <= eleccion.keys():
+        raise RespuestaModeloInvalida()
 
+    identificador = eleccion["id"]
     extracto = eleccion.get("extracto")
-    if not isinstance(extracto, str) or not extracto.strip():
+    if identificador is None and extracto == "":
         return Respuesta(SIN_EVIDENCIA)
+    if type(identificador) is not int or not isinstance(extracto, str) or not extracto.strip():
+        raise RespuestaModeloInvalida()
 
     extracto = extracto.strip()
     for fila in fragmentos:
-        if fila["chunk_index"] == eleccion.get("id") and extracto in fila["content"]:
+        if fila["chunk_index"] == identificador and extracto in fila["content"]:
             fuente = Fuente(fila["page_number"], fila["content"])
             return Respuesta(f"{extracto} [p. {fuente.pagina}]", fuente)
 
-    return Respuesta(SIN_EVIDENCIA)
+    raise RespuestaModeloInvalida()

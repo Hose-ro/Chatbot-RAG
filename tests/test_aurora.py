@@ -101,8 +101,13 @@ class PruebasAurora(unittest.TestCase):
         )
         self.assertEqual(resultado.texto, "99 pesos [p. 1]")
         self.assertEqual(resultado.fuente, rag.Fuente(1, self.otro_pdf["content"]))
-        resultado = self.consultar(
-            self.otro_pdf, "¿Cuál es el presupuesto de Aurora?",
-            '{"id": 0, "extracto": "47 pesos"}',
-        )
-        self.assertEqual(resultado, rag.Respuesta(rag.SIN_EVIDENCIA))
+        with self.assertRaises(rag.RespuestaModeloInvalida):
+            self.consultar(
+                self.otro_pdf, "¿Cuál es el presupuesto de Aurora?",
+                '{"id": 0, "extracto": "47 pesos"}',
+            )
+
+    def test_respuesta_invalida_del_modelo(self):
+        for salida in ("texto no JSON", "{}", '{"id": true, "extracto": "47 pesos"}'):
+            with self.subTest(salida=salida), self.assertRaises(rag.RespuestaModeloInvalida):
+                self.consultar(self.aurora, "¿Cuál es el presupuesto?", salida)
